@@ -1,4 +1,7 @@
+var squareRotation = 0.0;
+
 main();
+
 
 //
 // Start here
@@ -66,8 +69,19 @@ function main() {
     // objects we'll be drawing.
     const buffers = initBuffers(gl);
 
-    // Draw the scene
-    drawScene(gl, programInfo, buffers);
+    var then = 0
+
+    // Draw the scene repeatedly
+    function render(now) {
+        now *= 0.001;  // convert to seconds
+        const deltaTime = now - then;
+        then = now;
+
+        drawScene(gl, programInfo, buffers, deltaTime);
+
+        requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
 }
 
 //
@@ -106,10 +120,10 @@ function initBuffers(gl) {
     // Now create an array of positions for the square.
 
     const positions = [
-        0.3, 0.3,
+        1.0, 1.0,
         -1.0, 1.0,
         1.0, -1.0,
-        -0.3, -0.3,
+        -1.0, -1.0,
     ];
 
     // Now pass the list of positions into WebGL to build the
@@ -129,7 +143,7 @@ function initBuffers(gl) {
 //
 // Draw the scene.
 //
-function drawScene(gl, programInfo, buffers) {
+function drawScene(gl, programInfo, buffers, deltaTime) {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);  // Clear to black, fully opaque
     gl.clearDepth(1.0);                 // Clear everything
     gl.enable(gl.DEPTH_TEST);           // Enable depth testing
@@ -170,9 +184,14 @@ function drawScene(gl, programInfo, buffers) {
     mat4.translate(modelViewMatrix,     // destination matrix
         modelViewMatrix,     // matrix to translate
         [-0.0, 0.0, -6.0]);  // amount to translate
+    // Code to make our square rotate :D
+    mat4.rotate(modelViewMatrix,  // destination matrix
+        modelViewMatrix,  // matrix to rotate
+        squareRotation,   // amount to rotate in radians
+        [0.5, 0, 1]);       // axis to rotate around
 
     // Tell WebGL how to pull out the positions from the position
-    // buffer into the vertexPosition attribute.
+    // buffer into the vertexPosition attribute.   
     {
         const numComponents = 4;
         const type = gl.FLOAT;
@@ -233,6 +252,9 @@ function drawScene(gl, programInfo, buffers) {
         const vertexCount = 4;
         gl.drawArrays(gl.TRIANGLE_STRIP, offset, vertexCount);
     }
+
+    // This will rotate with the delta time
+    squareRotation += deltaTime;
 }
 
 //
