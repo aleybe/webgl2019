@@ -1,4 +1,4 @@
-var squareRotation = 0.0;
+var cubeRotation = 0.0;
 
 main();
 
@@ -21,16 +21,29 @@ function main() {
 
     const vsSource = `
     attribute vec4 aVertexPosition;
-    attribute vec4 aVertexColour;
+    attribute vec3 aVertexNormal;
+    
 
+    uniform mat4 uNormalMatrix;
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
+
     
-    varying lowp vec4 vColour;
-    
-    void main() {
+    varying highp vec3 vLighting;
+
+    void main(void) {
       gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-      vColour = aVertexColour;
+
+      // Apply lighting effect
+
+      highp vec3 ambientLight = vec3(0.3, 0.3, 0.3);
+      highp vec3 directionalLightColor = vec3(1, 1, 1);
+      highp vec3 directionalVector = normalize(vec3(0.85, 0.8, 0.75));
+
+      highp vec4 transformedNormal = uNormalMatrix * vec4(aVertexNormal, 1.0);
+
+      highp float directional = max(dot(transformedNormal.xyz, directionalVector), 0.0);
+      vLighting = ambientLight + (directionalLightColor * directional);
     }
   `;
 
@@ -38,10 +51,13 @@ function main() {
 
     const fsSource = `
 
-    varying lowp vec4 vColour;
+    varying highp vec3 vLighting;
 
-    void main() {
-        gl_FragColor = vColour;
+    uniform sampler2D uSampler;
+
+    void main(void) {
+      
+      gl_FragColor = vec4(vLighting, 255);
     }
   `;
 
@@ -53,18 +69,18 @@ function main() {
     // Look up which attribute our shader program is using
     // for aVertexPosition and look up uniform locations.
     const programInfo = {
-
         program: shaderProgram,
         attribLocations: {
             vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
-            vertexColor: gl.getAttribLocation(shaderProgram, 'aVertexColour')
+            vertexNormal: gl.getAttribLocation(shaderProgram, 'aVertexNormal'),
         },
         uniformLocations: {
             projectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
             modelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
+            normalMatrix: gl.getUniformLocation(shaderProgram, 'uNormalMatrix'),
+            uSampler: gl.getUniformLocation(shaderProgram, 'uSampler'),
         },
     };
-
     // Here's where we call the routine that builds all the
     // objects we'll be drawing.
     const buffers = initBuffers(gl);
@@ -94,13 +110,36 @@ function initBuffers(gl) {
 
     // Adding in the colours as per mozilla suggestions
 
-    const colours = [
-        1.0, 1.0, 1.0, 1.0, // White
-        1.0, 0.0, 0.0, 1.0, // Red
-        0.0, 1.0, 0.0, 1.0, // Green
-        0.0, 0.0, 1.0, 1.0, // Blue
-
+    const faceColours = [
+        [1.0, 1.0, 1.0, 1.0],    // Front face: white
+        [1.0, 0.0, 0.0, 1.0],    // Back face: red
+        [0.0, 1.0, 0.0, 1.0],    // Top face: green
+        [0.0, 0.0, 1.0, 1.0],    // Bottom face: blue
+        [1.0, 1.0, 0.0, 1.0],    // Right face: yellow
+        [1.0, 0.0, 1.0, 1.0],    // Left face: purple
     ]
+
+    var colours = [];
+
+    for (var j = 0; j < faceColours.length; ++j) {
+        const c = faceColours[j];
+
+        if (j < faceColours.length - 2) {
+            const a = faceColours[j + 1];
+            const b = faceColours[j + 2];
+
+            console.log("Colours are : " + a + b + c);
+
+            colours = colours.concat(a, b, c, c);
+        }
+        else {
+            colours = colours.concat(c, c, c, c);
+        }
+
+
+
+
+    }
 
     // Creating a colour buffer
 
@@ -120,10 +159,41 @@ function initBuffers(gl) {
     // Now create an array of positions for the square.
 
     const positions = [
-        1.0, 1.0,
-        -1.0, 1.0,
-        1.0, -1.0,
-        -1.0, -1.0,
+        // Front face
+        -1.0, -1.0, 1.0,
+        1.0, -1.0, 1.0,
+        1.0, 1.0, 1.0,
+        -1.0, 1.0, 1.0,
+
+        // Back face
+        -1.0, -1.0, -1.0,
+        -1.0, 1.0, -1.0,
+        1.0, 1.0, -1.0,
+        1.0, -1.0, -1.0,
+
+        // Top face
+        -1.0, 1.0, -1.0,
+        -1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0,
+        1.0, 1.0, -1.0,
+
+        // Bottom face
+        -1.0, -1.0, -1.0,
+        1.0, -1.0, -1.0,
+        1.0, -1.0, 1.0,
+        -1.0, -1.0, 1.0,
+
+        // Right face
+        1.0, -1.0, -1.0,
+        1.0, 1.0, -1.0,
+        1.0, 1.0, 1.0,
+        1.0, -1.0, 1.0,
+
+        // Left face
+        -1.0, -1.0, -1.0,
+        -1.0, -1.0, 1.0,
+        -1.0, 1.0, 1.0,
+        -1.0, 1.0, -1.0,
     ];
 
     // Now pass the list of positions into WebGL to build the
@@ -134,9 +204,72 @@ function initBuffers(gl) {
         new Float32Array(positions),
         gl.STATIC_DRAW);
 
+
+
+    const indexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+
+    const indices = [
+        0, 1, 2, 0, 2, 3,    // front
+        4, 5, 6, 4, 6, 7,    // back
+        8, 9, 10, 8, 10, 11,   // top
+        12, 13, 14, 12, 14, 15,   // bottom
+        16, 17, 18, 16, 18, 19,   // right
+        20, 21, 22, 20, 22, 23,   // left
+    ]
+
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,
+        new Uint16Array(indices), gl.STATIC_DRAW);
+
+    const normalBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+
+    const vertexNormals = [
+        // Front
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+        0.0, 0.0, 1.0,
+
+        // Back
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
+        0.0, 0.0, -1.0,
+
+        // Top
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.0, 1.0, 0.0,
+
+        // Bottom
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
+        0.0, -1.0, 0.0,
+
+        // Right
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+        1.0, 0.0, 0.0,
+
+        // Left
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0,
+        -1.0, 0.0, 0.0
+    ];
+
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexNormals),
+        gl.STATIC_DRAW);
+
     return {
         position: positionBuffer,
         color: colourBuffer,
+        indices: indexBuffer,
+        normal: normalBuffer
     };
 }
 
@@ -187,8 +320,12 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
     // Code to make our square rotate :D
     mat4.rotate(modelViewMatrix,  // destination matrix
         modelViewMatrix,  // matrix to rotate
-        squareRotation,   // amount to rotate in radians
-        [0.5, 0, 1]);       // axis to rotate around
+        cubeRotation,   // amount to rotate in radians
+        [1, 0, 1]);       // axis to rotate around
+
+    const normalMatrix = mat4.create();
+    mat4.invert(normalMatrix, modelViewMatrix);
+    mat4.transpose(normalMatrix, normalMatrix);
 
     // Tell WebGL how to pull out the positions from the position
     // buffer into the vertexPosition attribute.   
@@ -215,7 +352,7 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
     // Unsure lets test this first 
 
     {
-        const numComponents = 2;
+        const numComponents = 3;
         const type = gl.FLOAT;
         const normalize = false;
         const stride = 0;
@@ -232,6 +369,25 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
             programInfo.attribLocations.vertexPosition);
     }
 
+    {
+        const numComponents = 3;
+        const type = gl.FLOAT;
+        const normalize = false;
+        const stride = 0;
+        const offset = 0;
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normal);
+        gl.vertexAttribPointer(
+            programInfo.attribLocations.vertexNormal,
+            numComponents,
+            type,
+            normalize,
+            stride,
+            offset);
+        gl.enableVertexAttribArray(
+            programInfo.attribLocations.vertexNormal);
+    }
+
+
     // Tell WebGL to use our program when drawing
 
     gl.useProgram(programInfo.program);
@@ -246,15 +402,22 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
         programInfo.uniformLocations.modelViewMatrix,
         false,
         modelViewMatrix);
+    gl.uniformMatrix4fv(
+        programInfo.uniformLocations.normalMatrix,
+        false,
+        normalMatrix);
+
+
 
     {
+        const vertexCount = 36;
+        const type = gl.UNSIGNED_SHORT;
         const offset = 0;
-        const vertexCount = 4;
-        gl.drawArrays(gl.TRIANGLE_STRIP, offset, vertexCount);
+        gl.drawElements(gl.TRIANGLES, vertexCount, type, offset);
     }
 
     // This will rotate with the delta time
-    squareRotation += deltaTime;
+    cubeRotation += deltaTime;
 }
 
 //
